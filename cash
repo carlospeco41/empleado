@@ -1,0 +1,127 @@
+import tkinter as tk
+from tkinter import simpledialog, messagebox
+import sqlite3
+
+class CajeroAutomatico:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Cajero Automático")
+
+        # Variables para almacenar información del usuario
+        self.usuario_actual = ""
+        self.saldo_actual = 0.0
+
+        # Conexión a la base de datos SQLite
+        self.conn = sqlite3.connect('cajero.db')
+        self.c = self.conn.cursor()
+
+        # Crear tabla de usuarios si no existe
+        self.c.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                username TEXT PRIMARY KEY,
+                password TEXT,
+                saldo REAL
+            )
+        ''')
+
+        # Interfaz de usuario
+        self.login_frame = tk.Frame(root)
+        self.login_frame.pack(padx=10, pady=10)
+
+        self.label_usuario = tk.Label(self.login_frame, text="Usuario:")
+        self.label_usuario.grid(row=0, column=0, pady=5)
+        self.entry_usuario = tk.Entry(self.login_frame)
+        self.entry_usuario.grid(row=0, column=1, pady=5)
+
+        self.label_password = tk.Label(self.login_frame, text="Contraseña:")
+        self.label_password.grid(row=1, column=0, pady=5)
+        self.entry_password = tk.Entry(self.login_frame, show="*")
+        self.entry_password.grid(row=1, column=1, pady=5)
+
+        self.button_crear_cuenta = tk.Button(self.login_frame, text="Crear cuenta", command=self.crear_cuenta)
+        self.button_crear_cuenta.grid(row=2, column=0, columnspan=2, pady=10)
+
+        self.button_iniciar_sesion = tk.Button(self.login_frame, text="Iniciar sesión", command=self.iniciar_sesion)
+        self.button_iniciar_sesion.grid(row=3, column=0, columnspan=2, pady=10)
+
+    def crear_cuenta(self):
+        username = self.entry_usuario.get()
+        password = self.entry_password.get()
+
+        # Verificar si el usuario ya existe
+        self.c.execute("SELECT * FROM usuarios WHERE username=?", (username,))
+        if self.c.fetchone():
+            messagebox.showerror("Error", "Nombre de usuario ya existe. Por favor, elija otro.")
+        else:
+            # Agregar usuario a la base de datos
+            self.c.execute("INSERT INTO usuarios VALUES (?, ?, ?)", (username, password, 0.0))
+            self.conn.commit()
+            messagebox.showinfo("Éxito", "Cuenta creada exitosamente.")
+
+    def iniciar_sesion(self):
+        username = self.entry_usuario.get()
+        password = self.entry_password.get()
+
+        # Verificar credenciales de inicio de sesión
+        self.c.execute("SELECT * FROM usuarios WHERE username=? AND password=?", (username, password))
+        usuario = self.c.fetchone()
+
+        if usuario:
+            self.usuario_actual = usuario[0]
+            self.saldo_actual = usuario[2]
+
+            # Destruir el marco de inicio de sesión
+            self.login_frame.destroy()
+
+            # Mostrar el marco del cajero
+            self.mostrar_cajero()
+        else:
+            messagebox.showerror("Error", "Credenciales incorrectas. Por favor, inténtelo de nuevo.")
+
+    def mostrar_cajero(self):
+        # Marco para operaciones de cajero
+        self.cajero_frame = tk.Frame(self.root)
+        self.cajero_frame.pack(padx=10, pady=10)
+
+        # Etiqueta de bienvenida
+        tk.Label(self.cajero_frame, text=f"Bienvenido, {self.usuario_actual}").grid(row=0, column=0, columnspan=2, pady=10)
+
+        # Etiqueta de saldo
+        tk.Label(self.cajero_frame, text=f"Saldo actual: ${self.saldo_actual:.2f}").grid(row=1, column=0, columnspan=2, pady=10)
+
+        # Botones de operaciones
+        tk.Button(self.cajero_frame, text="Depositar", command=self.depositar).grid(row=2, column=0, pady=5)
+        tk.Button(self.cajero_frame, text="Retirar", command=self.retirar).grid(row=2, column=1, pady=5)
+
+    def depositar(self):
+        monto = float(simpledialog.askstring("Depositar", "Ingrese el monto a depositar:"))
+        self.saldo_actual += monto
+
+        # Actualizar saldo en la base de datos
+        self.c.execute("UPDATE usuarios SET saldo=? WHERE username=?", (self.saldo_actual, self.usuario_actual))
+        self.conn.commit()
+
+        # Actualizar etiqueta de saldo
+        self.cajero_frame.destroy()
+        self.mostrar_cajero()
+
+    def retirar(self):
+        monto = float(simpledialog.askstring("Retirar", "Ingrese el monto a retirar:"))
+
+        if monto <= self.saldo_actual:
+            self.saldo_actual -= monto
+
+            # Actualizar saldo en la base de datos
+            self.c.execute("UPDATE usuarios SET saldo=? WHERE username=?", (self.saldo_actual, self.usuario_actual))
+            self.conn.commit()
+
+            # Actualizar etiqueta de saldo
+            self.cajero_frame.destroy()
+            self.mostrar_cajero()
+        else:
+            messagebox.showerror("Error", "Fondos insuficientes.")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = CajeroAutomatico(root)
+    root.mainloop()
